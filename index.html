@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8">
+  <title>implantation son </title>
+  
+
+</head>
+<body>
+<!-- partial:index.partial.html -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Plan de Scène - Implantation Son + Câblage</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; display: flex; height: 100vh; }
+    .sidebar { width: 250px; background: #2c3e50; color: white; padding: 20px; box-sizing: border-box; overflow-y: auto; }
+    .sidebar h2 { margin-top: 0; }
+    .item { background: #1abc9c; padding: 10px; margin-bottom: 10px; border-radius: 8px; cursor: grab; text-align: center; }
+    .scene { flex: 1; background: #ecf0f1; position: relative; border-left: 2px solid #ccc; overflow: hidden; }
+    .element { position: absolute; padding: 8px 12px; background: #3498db; color: white; border-radius: 10px; cursor: move; user-select: none; z-index: 10; }
+    .element.multipaire { background: #9b59b6; }
+    #fiche-technique { background: #fff; border-top: 2px solid #ccc; padding: 15px; font-size: 14px; overflow-y: auto; height: 200px; }
+    .btn { margin-top: 15px; background: #e67e22; border: none; padding: 10px 15px; color: white; font-size: 14px; border-radius: 6px; cursor: pointer; width: 100%; }
+    .btn:hover { background: #d35400; }
+    svg { position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+    .cable { stroke: #000; stroke-width: 2; }
+    input.rename-input { position: absolute; z-index: 999; padding: 5px; border: 1px solid #aaa; border-radius: 5px; }
+    @media print {
+      body { flex-direction: column; }
+      .sidebar { display: none; }
+      .scene { border: none; }
+      #fiche-technique { display: block; page-break-before: always; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>🎚 Matériel</h2>
+    <div class="item" draggable="true" data-type="Micro">🎤 Micro</div>
+    <div class="item" draggable="true" data-type="Enceinte">🔊 Enceinte</div>
+    <div class="item" draggable="true" data-type="Table de Mixage">🎚 Table de Mixage</div>
+    <div class="item" draggable="true" data-type="Casque">🎧 Casque</div>
+    <div class="item" draggable="true" data-type="Retour Son">🔈 Retour Son</div>
+    <div class="item" draggable="true" data-type="Multipaire">🔌 Multipaire</div>
+    <button class="btn" onclick="genererFiche()">📄 Générer Fiche Technique</button>
+    <button class="btn" onclick="activerCablage()">🔗 Mode Câblage</button>
+    <button class="btn" onclick="activerCablageLibre()">✍️ Câblage Libre</button>
+    <button class="btn" onclick="window.print()">🖨 Imprimer le Plan de Scène</button>
+  </div>
+
+  <div class="scene" id="scene" ondragover="event.preventDefault()" ondrop="placerElement(event)">
+    <svg id="cables"></svg>
+    <div id="fiche-technique"><strong>📄 Fiche Technique :</strong><br>Aucun élément encore placé.</div>
+  </div>
+
+  <script>
+    let compteur = 1;
+    let currentType = "";
+    let cablageActif = false;
+    let cableStart = null;
+    let cablageLibreActif = false;
+    let cableLibreStart = null;
+    const scene = document.getElementById("scene");
+    const fiche = document.getElementById("fiche-technique");
+    const svg = document.getElementById("cables");
+
+    document.querySelectorAll('.item').forEach(item => {
+      item.addEventListener('dragstart', (e) => {
+        currentType = e.target.getAttribute('data-type');
+      });
+    });
+
+    function placerElement(e) {
+      e.preventDefault();
+      const x = e.clientX - scene.getBoundingClientRect().left;
+      const y = e.clientY - scene.getBoundingClientRect().top;
+
+      const elem = document.createElement('div');
+      elem.className = 'element';
+      if (currentType === 'Multipaire') elem.classList.add('multipaire');
+      elem.textContent = currentType + ' #' + compteur;
+      elem.style.left = x + 'px';
+      elem.style.top = y + 'px';
+      elem.setAttribute('data-type', currentType);
+      elem.setAttribute('data-id', compteur);
+      elem.setAttribute('draggable', false);
+
+      elem.onmousedown = function (e) {
+        const el = this;
+        const shiftX = e.clientX - el.getBoundingClientRect().left;
+        const shiftY = e.clientY - el.getBoundingClientRect().top;
+
+        function moveAt(pageX, pageY) {
+          el.style.left = (pageX - scene.getBoundingClientRect().left - shiftX) + 'px';
+          el.style.top = (pageY - scene.getBoundingClientRect().top - shiftY) + 'px';
+          updateCables();
+        }
+
+        function onMouseMove(e) { moveAt(e.pageX, e.pageY); }
+        document.addEventListener('mousemove', onMouseMove);
+        el.onmouseup = function () {
+          document.removeEventListener('mousemove', onMouseMove);
+          el.onmouseup = null;
+        };
+      };
+
+      elem.ondragstart = () => false;
+
+      elem.ondblclick = () => {
+        const currentText = elem.textContent;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "rename-input";
+        input.value = currentText;
+        input.style.left = elem.style.left;
+        input.style.top = elem.style.top;
+        scene.appendChild(input);
+        input.focus();
+        input.onblur = () => {
+          elem.textContent = input.value;
+          scene.removeChild(input);
+          updateCables();
+        };
+      };
+
+      elem.onclick = () => {
+        if (!cablageActif) return;
+        if (!cableStart) {
+          cableStart = elem;
+          elem.style.border = "2px solid yellow";
+        } else {
+          const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          line.classList.add("cable");
+          line.setAttribute("data-from", cableStart.getAttribute("data-id"));
+          line.setAttribute("data-to", elem.getAttribute("data-id"));
+          svg.appendChild(line);
+          updateCables();
+          cableStart.style.border = "none";
+          cableStart = null;
+        }
+      };
+
+      scene.appendChild(elem);
+      compteur++;
+    }
+
+    function genererFiche() {
+      const elements = scene.querySelectorAll('.element');
+      if (elements.length === 0) {
+        fiche.innerHTML = "<strong>📄 Fiche Technique :</strong><br>Aucun élément encore placé.";
+        return;
+      }
+      let ficheText = "<strong>📄 Fiche Technique :</strong><ul>";
+      elements.forEach(el => {
+        const nom = el.textContent;
+        const x = parseInt(el.style.left);
+        const y = parseInt(el.style.top);
+        ficheText += `<li>${nom} — Position (X: ${x}px, Y: ${y}px)</li>`;
+      });
+      ficheText += "</ul>";
+      fiche.innerHTML = ficheText;
+    }
+
+    function activerCablage() {
+      cablageActif = !cablageActif;
+      if (!cablageActif && cableStart) {
+        cableStart.style.border = "none";
+        cableStart = null;
+      }
+      alert("Mode câblage : " + (cablageActif ? "ACTIVÉ" : "DÉSACTIVÉ"));
+    }
+
+    function activerCablageLibre() {
+      cablageLibreActif = !cablageLibreActif;
+      if (!cablageLibreActif && cableLibreStart) cableLibreStart = null;
+      alert("Mode câblage libre : " + (cablageLibreActif ? "ACTIVÉ" : "DÉSACTIVÉ"));
+    }
+
+    scene.addEventListener('click', (e) => {
+      if (!cablageLibreActif) return;
+      const x = e.clientX - scene.getBoundingClientRect().left;
+      const y = e.clientY - scene.getBoundingClientRect().top;
+      if (!cableLibreStart) {
+        cableLibreStart = { x, y };
+        const dot = document.createElement('div');
+        dot.className = 'element';
+        dot.style.left = x + 'px';
+        dot.style.top = y + 'px';
+        dot.style.background = '#f39c12';
+        dot.textContent = '●';
+        dot.style.fontSize = '10px';
+        dot.style.padding = '2px 5px';
+        dot.setAttribute('data-temp', 'dot');
+        scene.appendChild(dot);
+      } else {
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.classList.add("cable");
+        line.setAttribute("x1", cableLibreStart.x);
+        line.setAttribute("y1", cableLibreStart.y);
+        line.setAttribute("x2", x);
+        line.setAttribute("y2", y);
+        svg.appendChild(line);
+        const oldDot = scene.querySelector('[data-temp="dot"]');
+        if (oldDot) scene.removeChild(oldDot);
+        cableLibreStart = null;
+      }
+    });
+
+    function updateCables() {
+      const lines = svg.querySelectorAll("line[data-from]");
+      lines.forEach(line => {
+        const fromId = line.getAttribute("data-from");
+        const toId = line.getAttribute("data-to");
+        const fromEl = document.querySelector(`.element[data-id="${fromId}"]`);
+        const toEl = document.querySelector(`.element[data-id="${toId}"]`);
+        if (fromEl && toEl) {
+          const x1 = fromEl.offsetLeft + fromEl.offsetWidth / 2;
+          const y1 = fromEl.offsetTop + fromEl.offsetHeight / 2;
+          const x2 = toEl.offsetLeft + toEl.offsetWidth / 2;
+          const y2 = toEl.offsetTop + toEl.offsetHeight / 2;
+          line.setAttribute("x1", x1);
+          line.setAttribute("y1", y1);
+          line.setAttribute("x2", x2);
+          line.setAttribute("y2", y2);
+        }
+      });
+    }
+  </script>
+</body>
+</html>
+<!-- partial -->
+  
+</body>
+</html>
